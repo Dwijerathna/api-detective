@@ -1,94 +1,182 @@
-# api-detective
+# API Detective
 
-CoinGecko-powered terminal dashboard: live prices, sparklines, tick-to-tick and optional 24h alerts, JSON logging, NDJSON mode, HTTP 429 backoff, optional market metadata, history persistence, and desktop notifications.
+[![Node.js >= 18](https://img.shields.io/badge/node-%3E%3D18-3c873a?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
 
-## Requirements
+Live crypto prices from the [CoinGecko API](https://www.coingecko.com/en/api): **terminal dashboard**, optional **web UI**, **JSON / NDJSON** logging, alerts (tick move, optional 24h), webhooks, Slack, Docker, and a separate **generic JSON HTTP probe**.
 
-- **Node.js 18+** (see `engines` in `package.json`; global `fetch`)
-- **`npm install`** — pulls in `node-notifier` for `--notify` (optional feature; other flags work without it if you avoid `--notify`)
+---
 
-Optional **`.env`** in the project directory is loaded on startup (values already in the process environment are not overwritten).
+## Contents
+
+- [Features](#features)
+- [Repository layout](#repository-layout)
+- [Quick start](#quick-start)
+- [Scripts](#scripts)
+- [CLI (`crypto_detective`)](#cli-crypto_detective)
+- [Web dashboard](#web-dashboard)
+- [Generic probe (`probe_detective`)](#generic-probe-probe_detective)
+- [Environment variables](#environment-variables)
+- [Data & persistence](#data--persistence)
+- [Develop & test](#develop--test)
+- [Docker](#docker)
+- [Security](#security)
+- [Contributing](#contributing)
+
+---
+
+## Features
+
+| Area | What you get |
+|------|----------------|
+| **CLI** | Multi-coin prices, sparklines, `%` move alerts, 429 backoff, `--json` / `--once`, history persist (JSONL) |
+| **Web UI** | Local dashboard (`npm run ui`), SSE updates, same env as CLI for coins / API key |
+| **Probe** | Poll any JSON URL, dot-path extraction, alerts, JSONL history, Slack optional |
+| **Integrations** | Custom webhook, Slack Incoming Webhook, desktop notify (`node-notifier`) |
+
+---
+
+## Repository layout
+
+```text
+api-detective/
+├── .github/
+│   ├── ISSUE_TEMPLATE/      # Bug / feature forms (GitHub)
+│   └── workflows/ci.yml       # Node 20 & 22 — npm test
+├── lib/                       # Shared modules (CoinGecko tick, JSONL, dotenv, Slack)
+├── public/                    # Static assets for the web UI
+├── tests/                     # node:test suite
+├── crypto_detective.mjs       # CoinGecko CLI entry
+├── probe_detective.mjs        # Generic JSON poller entry
+├── server.mjs                 # Web UI + /api/stream (SSE)
+├── package.json
+├── Dockerfile
+├── .env.example               # Documented env vars (no secrets)
+├── README.md
+├── CONTRIBUTING.md
+├── SECURITY.md
+└── LICENSE
+```
+
+---
 
 ## Quick start
 
 ```bash
+git clone https://github.com/<you>/api-detective.git
+cd api-detective
 npm install
 npm start
 ```
 
-### Web dashboard
+Copy `.env.example` → `.env` if you use env-based config (never commit `.env`).
 
-```bash
-npm run ui
-```
+---
 
-Opens a local server (default [http://127.0.0.1:3847/](http://127.0.0.1:3847/)) with a live CoinGecko dashboard. Coin list and `vs` currencies use the same env vars as the CLI (`CRYPTO_DETECTIVE_COINS`, `CRYPTO_DETECTIVE_VS`, optional `_WITH_GLOBAL`, `_WITH_MARKETS`, Pro API key). Flags: `node server.mjs --port=8080 --host=127.0.0.1 --poll=60` (poll interval seconds, minimum 5). Env: `CRYPTO_DETECTIVE_UI_PORT`, `CRYPTO_DETECTIVE_UI_HOST`, `CRYPTO_DETECTIVE_UI_POLL_SEC`.
+## Scripts
 
-Each browser tab runs its own upstream poll loop; use one tab or a longer `--poll` if you hit CoinGecko rate limits.
+| Command | Purpose |
+|---------|---------|
+| `npm start` | Run `crypto_detective.mjs` (terminal dashboard) |
+| `npm run ui` | Run `server.mjs` → [http://127.0.0.1:3847/](http://127.0.0.1:3847/) |
+| `npm run probe` | Run `probe_detective.mjs` (pass `--help` after) |
+| `npm test` | Run all tests |
+
+---
+
+## CLI (`crypto_detective`)
 
 ```bash
 node crypto_detective.mjs --help
 node crypto_detective.mjs --once --json
 ```
 
-## CLI highlights
+### Common flags
 
 | Flag | Purpose |
 |------|---------|
-| `--version` / `-v` | Print version |
 | `--coins=id1,id2` | CoinGecko ids |
 | `--vs=usd,eur` | Fiat codes (first = primary for alerts / sparkline) |
 | `--interval=SECS` | Poll interval |
 | `--alertPct=N` | Default tick-to-tick move alert threshold (%) |
-| `--alertPct-bitcoin=N` | Per-coin tick threshold (overrides same id in `--alerts-json`) |
+| `--alertPct-bitcoin=N` | Per-coin threshold (overrides same id in `--alerts-json`) |
 | `--alert24hPct=N` | \|24h change\| alert (separate cooldown) |
 | `--alerts-json=FILE` | Per-coin tick thresholds JSON |
 | `--with-global` | Add `/global` to each record (extra request) |
 | `--with-markets` | Add `/coins/markets` (rank, name, image) per coin (extra request) |
-| `--history-persist=FILE` | Save/load rolling `{ at, coins }[]` so sparklines survive restarts |
+| `--history-persist=FILE` | Rolling `{ at, coins }` — prefer `.jsonl` |
 | `--notify` | Desktop toast on alerts (`node-notifier`) |
 | `--once` | Single fetch then exit |
 | `--json` | One NDJSON line per tick on stdout |
-| `--pretty` | With `--json`: pretty-printed JSON (multi-line; not pipe-friendly as NDJSON) |
+| `--pretty` | With `--json`: indented JSON (not one-line NDJSON) |
 | `--dry-run` | Print resolved config (redacted) and exit; no network |
 | `--max-runtime=SECS` | Stop after `SECS` when looping |
-| `--jitter-sec=N` | Add random 0..N seconds to each poll delay |
+| `--jitter-sec=N` | Random 0..N seconds added to each poll delay |
 | `--no-log` | Skip log file |
-| `--plain` | No colors / no clear-screen |
-| `NO_COLOR=1` | Same styling effect as `--plain` |
+| `--plain` / `NO_COLOR=1` | No colors / no clear-screen |
 | `--no-beep` | No terminal bell on alerts |
+| `--version` / `-v` | Print package version |
+
+Full list: `node crypto_detective.mjs --help`.
+
+---
+
+## Web dashboard
+
+```bash
+npm run ui
+```
+
+- Default URL: **http://127.0.0.1:3847/**
+- Coins / `vs` / optional `WITH_GLOBAL` / `WITH_MARKETS` / Pro API key: same env names as the CLI (`CRYPTO_DETECTIVE_*`).
+- Server flags: `node server.mjs --port=8080 --host=127.0.0.1 --poll=60` (poll seconds, minimum **5**). Env: `CRYPTO_DETECTIVE_UI_PORT`, `CRYPTO_DETECTIVE_UI_HOST`, `CRYPTO_DETECTIVE_UI_POLL_SEC`.
+
+**Rate limits:** each browser tab runs its own upstream poll. Prefer one tab or a longer `--poll` if CoinGecko returns 429.
+
+---
+
+## Generic probe (`probe_detective`)
+
+Polls any HTTP(S) URL that returns JSON; reads a value by **dot path** (e.g. `bitcoin.usd`, `data.0.id`).
+
+```bash
+npm run probe -- --help
+node probe_detective.mjs --url=https://api.coingecko.com/api/v3/ping --path=gecko_says --once --json
+```
+
+Use **`--history-persist=path.jsonl`** for fast JSONL history. Env: `PROBE_*` (see `probe_detective.mjs --help`). **`--strict`** exits **1** if `--path` is set but the value is missing.
+
+---
 
 ## Environment variables
 
-CLI overrides env. Supported: `CRYPTO_DETECTIVE_COINS`, `_INTERVAL_SEC`, `_ALERT_PCT`, `_ALERT_24H_PCT`, `_ALERT_COOLDOWN_MIN`, `_HISTORY`, `_LOG`, `_ONCE`, `_JSON`, `_PRETTY`, `_DRY_RUN`, `_MAX_RUNTIME_SEC`, `_JITTER_SEC`, `_NO_BEEP`, `_NO_LOG`, `_PLAIN`, `_VS`, `_WITH_GLOBAL`, `_WITH_MARKETS`, `_NOTIFY`, `_HISTORY_PERSIST` (path).
+**Crypto CLI / UI:** `CRYPTO_DETECTIVE_COINS`, `_INTERVAL_SEC`, `_ALERT_PCT`, `_ALERT_24H_PCT`, `_ALERT_COOLDOWN_MIN`, `_HISTORY`, `_LOG`, `_ONCE`, `_JSON`, `_PRETTY`, `_DRY_RUN`, `_MAX_RUNTIME_SEC`, `_JITTER_SEC`, `_NO_BEEP`, `_NO_LOG`, `_PLAIN`, `_VS`, `_WITH_GLOBAL`, `_WITH_MARKETS`, `_NOTIFY`, `_HISTORY_PERSIST`. See **`.env.example`**.
 
-**CoinGecko Pro:** set `COINGECKO_API_KEY` or `CRYPTO_DETECTIVE_COINGECKO_API_KEY` (sent as `x-cg-pro-api-key`).
+**CoinGecko Pro:** `COINGECKO_API_KEY` or `CRYPTO_DETECTIVE_COINGECKO_API_KEY` (header `x-cg-pro-api-key`).
 
-## Webhook
+**Webhooks:** `CRYPTO_DETECTIVE_ALERT_WEBHOOK` or `ALERT_WEBHOOK_URL` — `POST` JSON on alerts. **Slack:** `CRYPTO_DETECTIVE_SLACK_WEBHOOK`.
 
-`CRYPTO_DETECTIVE_ALERT_WEBHOOK` or `ALERT_WEBHOOK_URL` — `POST` JSON when any alert fires.
+Optional **`.env`** in the project root is loaded on startup (existing `process.env` values are not overwritten).
 
-**Slack:** `CRYPTO_DETECTIVE_SLACK_WEBHOOK` (Incoming Webhook URL) sends a short text message on alerts.
+---
 
-## Log / NDJSON shape
+## Data & persistence
 
-`at`, `prices`, `coins`, `alerts`, and when enabled: `global`, `markets`.
+- **Log / NDJSON shape:** `at`, `prices`, `coins`, `alerts`, and when enabled: `global`, `markets`.
+- **Retries:** HTTP **408**, **425**, **5xx**, and transient network errors are retried. **429** uses backoff (no blind spam).
+- **History:** `--history-persist` uses a **JSON** or **JSONL** file (not SQLite); JSONL is recommended for rolling windows.
 
-## Retries
+---
 
-HTTP **408**, **425**, **5xx**, and network errors are retried (a few attempts). **429** triggers backoff instead of blind retries.
-
-## Persistence
-
-`--history-persist` uses a **JSON file** (not SQLite) for portability—only `at` and `coins` are stored to keep files small.
-
-## Develop
+## Develop & test
 
 ```bash
 npm test
 ```
 
-VS Code: **Run crypto_detective.mjs** (`.vscode/launch.json`).
+VS Code: **Run crypto_detective.mjs** (`.vscode/launch.json`). See **[CONTRIBUTING.md](CONTRIBUTING.md)** for PR expectations.
+
+---
 
 ## Docker
 
@@ -97,30 +185,29 @@ docker build -t api-detective .
 docker run --rm -e COINGECKO_API_KEY=... api-detective
 ```
 
-Override the command if you need probe mode, e.g. `docker run ... api-detective node probe_detective.mjs --help`.
-
-## Generic HTTP JSON probe
-
-`probe_detective.mjs` polls any URL that returns JSON and reads a value by **dot path** (e.g. `bitcoin.usd` or `data.0.id`).
+Web UI in a container (listen on all interfaces):
 
 ```bash
-npm run probe -- --help
-node probe_detective.mjs --url=https://api.coingecko.com/api/v3/ping --path=gecko_says --once --json
+docker run --rm -p 3847:3847 -e COINGECKO_API_KEY=... api-detective node server.mjs --host=0.0.0.0 --port=3847
 ```
 
-Use **`--history-persist=path.jsonl`** so history is stored as **JSONL** (one object per line). That avoids SQLite: tiny files, no DB engine, very fast for a capped rolling window (rewrite cost scales with history length, usually well under a millisecond for dozens of rows).
+Override `CMD` for probe mode, e.g. `docker run ... api-detective node probe_detective.mjs --help`.
 
-`crypto_detective.mjs` supports the same: **`--history-persist=foo.jsonl`** uses JSONL; **`foo.json`** stays the old single JSON-array format.
-
-Probe env: `PROBE_URL`, `PROBE_JSON_PATH`, `PROBE_INTERVAL_SEC`, `PROBE_PRETTY`, `PROBE_DRY_RUN`, `PROBE_MAX_RUNTIME_SEC`, `PROBE_JITTER_SEC`, `PROBE_STRICT`, `PROBE_SLACK_WEBHOOK`, `PROBE_HISTORY_PERSIST`, etc. See `probe_detective.mjs --help`.
-
-`--strict` makes the process **exit 1** when `--path` is set but the resolved JSON value is **undefined** (path missing). Without `--strict`, that tick is treated as a failed read and the loop continues.
+---
 
 ## Security
 
-- Do not commit **`.env`** or API keys; use **`.env.example`** as a template.
-- Webhook URLs are secrets; prefer environment variables in CI and production.
+- Do not commit **`.env`**, API keys, or webhook URLs; use **`.env.example`** for names only.
+- Report sensitive issues privately — see **[SECURITY.md](SECURITY.md)**.
 
-## API
+---
 
-Uses the [CoinGecko API](https://www.coingecko.com/en/api). Respect rate limits.
+## Contributing
+
+Issues and PRs welcome. Use the templates under **`.github/`**. Guidelines: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+---
+
+## License
+
+[ISC](LICENSE)

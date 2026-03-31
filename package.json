@@ -9,7 +9,16 @@
     "probe": "node ./probe_detective.mjs",
     "test": "node --test ./tests/*.mjs"
   },
-  "keywords": [],
+  "keywords": [
+    "coingecko",
+    "cryptocurrency",
+    "crypto",
+    "cli",
+    "dashboard",
+    "nodejs",
+    "json",
+    "docker"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",

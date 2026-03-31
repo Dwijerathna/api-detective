@@ -9,5 +9,5 @@ What does this change do, and why?
 
 ## Checklist
 
-- [ ] Docs updated if behavior or flags changed (`README.md`, `.env.example`, `--help` text)
+- [ ] Docs updated if behavior or flags changed (`docs/`, root `README.md`, `.env.example`, `--help` text)
 - [ ] No secrets or personal paths committed

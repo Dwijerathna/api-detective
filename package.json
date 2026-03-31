@@ -1,0 +1,22 @@
+{
+  "name": "api-detective",
+  "version": "1.0.0",
+  "description": "CoinGecko terminal price dashboard with alerts and JSON logging",
+  "main": "crypto_detective.mjs",
+  "scripts": {
+    "start": "node ./crypto_detective.mjs",
+    "ui": "node ./server.mjs",
+    "probe": "node ./probe_detective.mjs",
+    "test": "node --test ./tests/*.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "node-notifier": "^10.0.1"
+  }
+}

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>API Detective — live prices</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg0: #06080c;
+      --bg1: #0e1219;
+      --card: #141a24;
+      --stroke: rgba(126, 214, 206, 0.18);
+      --text: #e8ecf2;
+      --muted: #7a8698;
+      --coral: #ff5c45;
+      --mint: #7ed6ce;
+      --amber: #f0b429;
+      --glow: rgba(126, 214, 206, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 120% 80% at 10% -20%, rgba(255, 92, 69, 0.08), transparent 50%),
+        radial-gradient(ellipse 90% 60% at 100% 0%, rgba(126, 214, 206, 0.1), transparent 45%),
+        var(--bg0);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 500;
+      font-size: clamp(1.75rem, 4vw, 2.35rem);
+      letter-spacing: -0.02em;
+    }
+
+    h1 span {
+      color: var(--mint);
+      font-style: italic;
+    }
+
+    .sub {
+      margin: 0.35rem 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 12px transparent;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .dot.live {
+      background: var(--mint);
+      box-shadow: 0 0 14px var(--mint);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .dot.warn {
+      background: var(--amber);
+      box-shadow: 0 0 12px var(--amber);
+    }
+
+    .dot.err {
+      background: var(--coral);
+      box-shadow: 0 0 12px var(--coral);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
+    }
+
+    .banner {
+      display: none;
+      margin-bottom: 1.25rem;
+      padding: 0.85rem 1rem;
+      border-radius: 10px;
+      background: rgba(240, 180, 41, 0.12);
+      border: 1px solid rgba(240, 180, 41, 0.35);
+      color: #f5d88a;
+      font-size: 0.9rem;
+    }
+
+    .banner.show {
+      display: block;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: linear-gradient(145deg, var(--card) 0%, var(--bg1) 100%);
+      border: 1px solid var(--stroke);
+      border-radius: 16px;
+      padding: 1.25rem 1.35rem;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 100% 0%, var(--glow), transparent 55%);
+      pointer-events: none;
+    }
+
+    .card-inner {
+      position: relative;
+      z-index: 1;
+    }
+
+    .coin-top {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .coin-top img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--bg0);
+    }
+
+    .coin-meta h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+
+    .coin-meta .id {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: "IBM Plex Sans", monospace;
+    }
+
+    .price-row {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+    }
+
+    .price {
+      font-family: "IBM Plex Sans", monospace;
+      font-size: 1.65rem;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+
+    .price.up {
+      color: var(--mint);
+    }
+
+    .price.down {
+      color: var(--coral);
+    }
+
+    .ch24 {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .ch24.up {
+      color: var(--mint);
+    }
+
+    .ch24.down {
+      color: var(--coral);
+    }
+
+    .spark {
+      margin-top: 1rem;
+      height: 48px;
+      width: 100%;
+    }
+
+    .spark path {
+      fill: none;
+      stroke: var(--mint);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.85;
+    }
+
+    .foot {
+      margin-top: 2.5rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .foot code {
+      background: var(--bg1);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dot.live {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>API <span>Detective</span></h1>
+        <p class="sub">CoinGecko stream · local dashboard</p>
+      </div>
+      <div class="status">
+        <span class="dot" id="statusDot" aria-hidden="true"></span>
+        <span id="statusText">Connecting…</span>
+        <span id="clock"></span>
+      </div>
+    </header>
+
+    <div class="banner" id="banner" role="status"></div>
+    <div class="grid" id="grid"></div>
+
+    <p class="foot">
+      Data from CoinGecko · same env as CLI (<code>CRYPTO_DETECTIVE_COINS</code>, API keys) ·
+      <code>npm run ui</code>
+    </p>
+  </div>
+
+  <script>
+    (function () {
+      const grid = document.getElementById("grid");
+      const statusDot = document.getElementById("statusDot");
+      const statusText = document.getElementById("statusText");
+      const banner = document.getElementById("banner");
+      const clock = document.getElementById("clock");
+
+      const HISTORY_LEN = 36;
+      /** @type {Record<string, number[]>} */
+      const history = {};
+      /** @type {Record<string, number>} */
+      let lastPrice = {};
+
+      function fiatSymbol(vs) {
+        const m = { usd: "$", eur: "€", gbp: "£", jpy: "¥" };
+        return m[(vs || "usd").toLowerCase()] || vs.toUpperCase() + " ";
+      }
+
+      function formatPrice(n, vs) {
+        const sym = fiatSymbol(vs);
+        if (!Number.isFinite(n)) return "—";
+        const abs = Math.abs(n);
+        if (abs >= 1e12) return sym + (n / 1e12).toFixed(2) + "T";
+        if (abs >= 1e9) return sym + (n / 1e9).toFixed(2) + "B";
+        if (abs >= 1e6) return sym + (n / 1e6).toFixed(2) + "M";
+        if (abs >= 1e3) return sym + n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+        return sym + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+      }
+
+      function sparklineD(values, w, h) {
+        if (values.length < 2) return "";
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const pad = 4;
+        const innerW = w - pad * 2;
+        const innerH = h - pad * 2;
+        const pts = values.map((v, i) => {
+          const x = pad + (i / (values.length - 1)) * innerW;
+          const t = max === min ? 0.5 : (v - min) / (max - min);
+          const y = pad + innerH * (1 - t);
+          return [x, y];
+        });
+        let d = "M " + pts[0][0] + " " + pts[0][1];
+        for (let i = 1; i < pts.length; i++) {
+          d += " L " + pts[i][0] + " " + pts[i][1];
+        }
+        return d;
+      }
+
+      function detectPrimaryVs(coins) {
+        const first = Object.values(coins)[0];
+        if (!first || typeof first !== "object") return "usd";
+        for (const k of Object.keys(first)) {
+          if (!k.includes("_") && typeof first[k] === "number") return k;
+        }
+        return "usd";
+      }
+
+      function renderCard(id, row, markets, vs) {
+        const chKey = vs + "_24h_change";
+        const ch = typeof row[chKey] === "number" ? row[chKey] : null;
+        const price = row[vs];
+        const m = markets && markets[id];
+        const name = (m && m.name) || id;
+        const img = m && m.image;
+
+        if (!history[id]) history[id] = [];
+        if (typeof price === "number") {
+          history[id].push(price);
+          if (history[id].length > HISTORY_LEN) history[id].shift();
+        }
+
+        const prev = lastPrice[id];
+        lastPrice[id] = typeof price === "number" ? price : prev;
+        let moveClass = "";
+        if (typeof price === "number" && typeof prev === "number" && prev !== 0 && id in lastPrice) {
+          if (price > prev) moveClass = "up";
+          else if (price < prev) moveClass = "down";
+        }
+
+        const vals = history[id];
+        const pathD = sparklineD(vals, 280, 48);
+
+        const chClass = ch == null ? "" : ch >= 0 ? "up" : "down";
+        const chStr = ch == null ? "" : (ch >= 0 ? "+" : "") + ch.toFixed(2) + "% 24h";
+
+        return (
+          '<article class="card" data-id="' +
+          id +
+          '">' +
+          '<div class="card-inner">' +
+          '<div class="coin-top">' +
+          (img ? '<img src="' + img + '" alt="" width="40" height="40" loading="lazy" />' : '<div style="width:40px;height:40px;border-radius:50%;background:#1a222e"></div>') +
+          '<div class="coin-meta"><h2>' +
+          name +
+          '</h2><div class="id">' +
+          id +
+          "</div></div></div>" +
+          '<div class="price-row">' +
+          '<span class="price ' +
+          moveClass +
+          '">' +
+          formatPrice(price, vs) +
+          "</span>" +
+          (ch != null ? '<span class="ch24 ' + chClass + '">' + chStr + "</span>" : "") +
+          "</div>" +
+          '<svg class="spark" viewBox="0 0 280 48" preserveAspectRatio="none">' +
+          (pathD ? '<path d="' + pathD + '" vector-effect="non-scaling-stroke" />' : "") +
+          "</svg>" +
+          "</div></article>"
+        );
+      }
+
+      function render(data) {
+        if (data.error) {
+          statusDot.className = "dot " + (data.error === "rate_limited" ? "warn" : "err");
+          statusText.textContent =
+            data.error === "rate_limited"
+              ? "Rate limited · retry in " + (data.retryInSec || "?") + "s"
+              : "Error: " + data.error;
+          if (data.error === "rate_limited") {
+            banner.textContent = "CoinGecko rate limit — backing off. Consider a Pro API key or slower polling (--poll).";
+            banner.classList.add("show");
+          } else {
+            banner.textContent = "Could not refresh prices. Check network and API status.";
+            banner.classList.add("show");
+          }
+          return;
+        }
+
+        banner.classList.remove("show");
+        statusDot.className = "dot live";
+        statusText.textContent = "Live · " + (data.at || "").replace("T", " ").slice(0, 19) + " UTC";
+
+        const coins = data.coins || {};
+        const markets = data.markets || {};
+        const vs = detectPrimaryVs(coins);
+        const ids = Object.keys(coins).sort();
+
+        if (ids.length === 0) {
+          grid.innerHTML = '<p style="color:var(--muted)">No coins in response.</p>';
+          return;
+        }
+
+        grid.innerHTML = ids.map((id) => renderCard(id, coins[id], markets, vs)).join("");
+      }
+
+      function tickClock() {
+        clock.textContent = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+      }
+      tickClock();
+      setInterval(tickClock, 1000);
+
+      const es = new EventSource("/api/stream");
+      es.onmessage = function (ev) {
+        try {
+          const data = JSON.parse(ev.data);
+          render(data);
+        } catch (e) {
+          statusDot.className = "dot err";
+          statusText.textContent = "Bad payload";
+        }
+      };
+      es.onerror = function () {
+        statusDot.className = "dot err";
+        statusText.textContent = "Stream disconnected — retrying…";
+        banner.textContent = "Lost connection to this page’s server. It will reconnect automatically.";
+        banner.classList.add("show");
+      };
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+node_modules/
+.env
+*.log
+*.jsonl
+*.ndjson
+crypto_hist*.json
+probe_hist*.json
+tmp_*/
+.DS_Store
